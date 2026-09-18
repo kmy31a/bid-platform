@@ -362,3 +362,172 @@ def main():
     
     # 메인 컨텐츠
     st.title("🌐 글로벌 입찰정보 통합 플랫폼")
+
+    st.caption("나라장터 · World Bank · ADB 입찰공고를 한 곳에서 검색하세요")
+    
+    # 검색 실행
+    if search_clicked or "all_bids" not in st.session_state:
+        keywords = [k.strip() for k in keywords_input.split(",") if k.strip()]
+        
+        if not keywords:
+            st.warning("검색 키워드를 입력해주세요.")
+            return
+        
+        if not sources:
+            st.warning("최소 하나의 데이터 소스를 선택해주세요.")
+            return
+        
+        all_bids = []
+        
+        with st.spinner("입찰정보를 수집 중입니다..."):
+            progress_bar = st.progress(0)
+            total_steps = len(sources) * len(keywords)
+            current_step = 0
+            
+            for source in sources:
+                for keyword in keywords:
+                    current_step += 1
+                    progress_bar.progress(current_step / total_steps)
+                    
+                    if source == "나라장터":
+                        bids = fetch_nara_bids(keyword, max_results // len(keywords))
+                    elif source == "World Bank":
+                        bids = fetch_worldbank_bids(keyword, max_results // len(keywords))
+                    elif source == "ADB":
+                        bids = fetch_adb_bids(keyword, max_results // len(keywords))
+                    else:
+                        bids = []
+                    
+                    all_bids.extend(bids)
+                    time.sleep(0.3)  # API 호출 간격
+            
+            progress_bar.empty()
+        
+        # 중복 제거 (ID 기준)
+        seen_ids = set()
+        unique_bids = []
+        for bid in all_bids:
+            bid_id = f"{bid['source']}_{bid['id']}"
+            if bid_id not in seen_ids:
+                seen_ids.add(bid_id)
+                unique_bids.append(bid)
+        
+        # 마감일 기준 정렬
+        unique_bids.sort(key=lambda x: x.get("deadline", "9999-99-99"))
+        
+        st.session_state["all_bids"] = unique_bids
+        st.session_state["last_search"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+    
+    # 결과 표시
+    all_bids = st.session_state.get("all_bids", [])
+    last_search = st.session_state.get("last_search", "")
+    
+    if last_search:
+        st.caption(f"🕐 마지막 검색: {last_search}")
+    
+    st.divider()
+    
+    # 통계
+    if all_bids:
+        render_statistics(all_bids)
+        st.divider()
+    
+    # 탭 구성
+    tab_all, tab_nara, tab_wb, tab_adb, tab_links = st.tabs([
+        f"📋 전체 ({len(all_bids)})",
+        f"🇰🇷 나라장터 ({len([b for b in all_bids if b['source'] == '나라장터'])})",
+        f"🌍 World Bank ({len([b for b in all_bids if b['source'] == 'World Bank'])})",
+        f"🌏 ADB ({len([b for b in all_bids if b['source'] == 'ADB'])})",
+        "🔗 바로가기",
+    ])
+    
+    with tab_all:
+        if not all_bids:
+            st.info("검색 버튼을 눌러 입찰정보를 조회하세요.")
+        else:
+            # 필터링
+            col1, col2, col3 = st.columns([2, 1, 1])
+            with col1:
+                search_filter = st.text_input(
+                    "결과 내 검색",
+                    placeholder="공고명, 기관명으로 필터링",
+                    label_visibility="collapsed",
+                )
+            with col2:
+                status_filter = st.selectbox(
+                    "상태",
+                    ["전체", "진행중", "마감임박", "마감"],
+                    label_visibility="collapsed",
+                )
+            with col3:
+                source_filter = st.selectbox(
+                    "소스",
+                    ["전체", "나라장터", "World Bank", "ADB"],
+                    label_visibility="collapsed",
+                )
+            
+            # 필터 적용
+            filtered_bids = all_bids
+            if search_filter:
+                filtered_bids = [
+                    b for b in filtered_bids
+                    if search_filter.lower() in b.get("title", "").lower()
+                    or search_filter.lower() in b.get("agency", "").lower()
+                ]
+            if status_filter != "전체":
+                filtered_bids = [
+                    b for b in filtered_bids
+                    if get_status(b.get("deadline", "")) == status_filter
+                ]
+            if source_filter != "전체":
+                filtered_bids = [b for b in filtered_bids if b["source"] == source_filter]
+            
+            st.caption(f"{len(filtered_bids)}건의 공고")
+            
+            for bid in filtered_bids:
+                render_bid_card(bid)
+    
+    with tab_nara:
+        nara_bids = [b for b in all_bids if b["source"] == "나라장터"]
+        if not nara_bids:
+            st.info("나라장터 검색 결과가 없습니다.")
+        else:
+            for bid in nara_bids:
+                render_bid_card(bid)
+    
+    with tab_wb:
+        wb_bids = [b for b in all_bids if b["source"] == "World Bank"]
+        if not wb_bids:
+            st.info("World Bank 검색 결과가 없습니다.")
+        else:
+            for bid in wb_bids:
+                render_bid_card(bid)
+    
+    with tab_adb:
+        adb_bids = [b for b in all_bids if b["source"] == "ADB"]
+        if not adb_bids:
+            st.info("ADB 검색 결과가 없습니다.")
+        else:
+            for bid in adb_bids:
+                render_bid_card(bid)
+    
+    with tab_links:
+        render_external_links()
+        
+        st.divider()
+        st.subheader("📌 주요 조달 정보 사이트")
+        
+        additional_links = {
+            "UN Global Marketplace": "https://www.ungm.org/",
+            "UNDP Procurement": "https://procurement-notices.undp.org/",
+            "IDB (미주개발은행)": "https://www.iadb.org/en/procurement",
+            "EU TED (유럽)": "https://ted.europa.eu/",
+        }
+        
+        for name, url in additional_links.items():
+            st.markdown(f"- [{name}]({url})")
+
+
+if __name__ == "__main__":
+    main()
+
