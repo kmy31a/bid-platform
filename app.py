@@ -369,21 +369,21 @@ def main():
         st.session_state["bids"] = unique_bids
         st.session_state["search_time"] = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-       if "bids" in st.session_state and st.session_state["bids"]:
+    if "bids" in st.session_state and st.session_state["bids"]:
         bids = st.session_state["bids"]
-        
+
         st.success(f"🕐 {st.session_state.get('search_time', '')} 검색 완료")
         render_statistics(bids)
-        
+
         st.divider()
-        
+
         filter_source = st.selectbox("소스 필터", ["전체", "나라장터", "World Bank"])
-        
+
         if filter_source != "전체":
             bids = [b for b in bids if b["source"] == filter_source]
 
         st.subheader(f"📋 검색 결과 ({len(bids)}건)")
-        
+
         for bid in bids:
             render_bid_card(bid)
 
@@ -393,5 +393,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
