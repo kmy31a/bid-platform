@@ -12,11 +12,11 @@ import time
 NARA_API_KEY = "887d7fccefd8a0adfe4f33a62b6532b6c355c131138a3d7303dc6d2f6c3d0bea"
 NARA_ENDPOINT = "https://apis.data.go.kr/1230000/BidPublicInfoService04/getBidPblancListInfoServcPPSSrch"
 
-DEFAULT_KEYWORDS = ["IT", "ICT", "의료", "교육", "건설"]
+DEFAULT_KEYWORDS = ["IT", "ICT", "의료", "교육", "보건", "교통", "기자재"]
 
 EXTERNAL_LINKS = {
     "KOICA": "https://www.koica.go.kr/koica_kr/901/subview.do",
-    "EDCF": "https://www.edcfkorea.go.kr/site/homepage/menu/viewMenu?menuid=004002001",
+    "EDCF": "https://www.edcfkorea.go.kr/fe/HPHFFE065M01",
     "ADB": "https://www.adb.org/projects/tenders",
     "AfDB": "https://www.afdb.org/en/projects-and-operations/procurement",
 }
