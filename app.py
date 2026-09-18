@@ -2,7 +2,6 @@ import streamlit as st
 import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime, date, timedelta
-from typing import Any
 import time
 
 # ============================================================
@@ -37,7 +36,6 @@ def parse_date(date_str):
     if not date_str:
         return ""
     try:
-        # 다양한 날짜 형식 처리
         if "T" in date_str:
             return datetime.strptime(date_str[:10], "%Y-%m-%d").strftime("%Y-%m-%d")
         if len(date_str) >= 10 and "-" in date_str:
@@ -127,12 +125,9 @@ def fetch_nara_bids(keyword, num_rows=30):
 
         for item in items:
             bid_id = get_xml_text(item, "bidNtceNo")
-            bid_seq = get_xml_text(item, "bidNtceOrd") or "00"
-            
-            # 상세페이지 URL 생성
             detail_url = get_xml_text(item, "bidNtceDtlUrl")
             if not detail_url and bid_id:
-                detail_url = f"https://www.g2b.go.kr/pt/menu/selectSubFrame.do?framesrc=/pt/menu/frameTgong.do?url=https://www.g2b.go.kr:8101/ep/invitation/publish/bidInfoDtl.do?bidno={bid_id}"
+                detail_url = f"https://www.g2b.go.kr:8101/ep/invitation/publish/bidInfoDtl.do?bidno={bid_id}"
             
             bid = {
                 "source": "나라장터",
@@ -153,17 +148,14 @@ def fetch_nara_bids(keyword, num_rows=30):
         return []
 
 
-def fetch_worldbank_bids(keyword, num_rows=30):
-    """World Bank 입찰공고 검색 - 마감일이 미래인 공고만"""
+def fetch_worldbank_bids(keyword, num_rows=30, include_closed=False):
+    """World Bank 입찰공고 검색"""
     url = "https://search.worldbank.org/api/v2/procnotices"
-    
-    # 오늘 날짜 기준으로 미래 마감 공고만 검색
-    today_str = date.today().strftime("%Y-%m-%d")
     
     params = {
         "format": "json",
         "qterm": keyword,
-        "rows": num_rows * 3,  # 필터링 후 충분한 결과를 위해 더 많이 요청
+        "rows": num_rows * 3,
         "os": 0,
     }
 
@@ -179,26 +171,23 @@ def fetch_worldbank_bids(keyword, num_rows=30):
                 if not isinstance(doc, dict):
                     return None
                 
-                # 마감일 추출
                 deadline_raw = doc.get("submission_date", "") or doc.get("deadline_date", "")
                 deadline = parse_date(deadline_raw)
                 
-                # 마감일이 오늘 이후인 것만 포함 (마감일 없는 것도 포함)
-                if deadline:
+                # 마감된 공고 필터링
+                if not include_closed and deadline:
                     try:
                         deadline_date = datetime.strptime(deadline, "%Y-%m-%d").date()
                         if deadline_date < date.today():
-                            return None  # 마감된 공고 제외
+                            return None
                     except:
                         pass
                 
-                # 상세 페이지 URL 생성
                 notice_id = doc.get("id", key)
                 detail_url = doc.get("url", "")
                 if not detail_url and notice_id:
                     detail_url = f"https://projects.worldbank.org/en/projects-operations/procurement-detail/{notice_id}"
                 
-                # notice_type 전체 표시
                 notice_type = doc.get("notice_type", "") or doc.get("procurement_method", "") or "-"
                 
                 bid = {
@@ -214,7 +203,6 @@ def fetch_worldbank_bids(keyword, num_rows=30):
                 }
                 return bid if bid["title"] else None
             
-            # dict인 경우
             if isinstance(proc_data, dict):
                 for key, doc in proc_data.items():
                     if key not in ["total", "rows"]:
@@ -222,14 +210,12 @@ def fetch_worldbank_bids(keyword, num_rows=30):
                         if bid:
                             results.append(bid)
             
-            # list인 경우
             elif isinstance(proc_data, list):
                 for doc in proc_data:
                     bid = process_doc(doc)
                     if bid:
                         results.append(bid)
 
-            # 결과 개수 제한
             return results[:num_rows]
             
         except requests.exceptions.Timeout:
@@ -251,11 +237,10 @@ def fetch_worldbank_bids(keyword, num_rows=30):
 # ============================================================
 
 def render_bid_card(bid):
-    """입찰공고 카드 - 클릭 시 상세페이지로 이동"""
+    """입찰공고 카드"""
     status = get_status(bid.get("deadline", ""))
     color = STATUS_COLORS.get(status, "gray")
     
-    # 카드 전체를 클릭 가능하게
     with st.container(border=True):
         col1, col2 = st.columns([4, 1])
 
@@ -264,7 +249,6 @@ def render_bid_card(bid):
             title = bid.get("title", "제목 없음")
             short_title = title[:55] + "..." if len(title) > 55 else title
             
-            # 제목을 클릭 가능한 링크로
             if bid.get("url"):
                 st.markdown(f"**{emoji} [{short_title}]({bid['url']})**")
             else:
@@ -282,13 +266,12 @@ def render_bid_card(bid):
         c1.markdown(f"📅 **마감일**\n\n{bid.get('deadline', '-') or '-'}")
         c2.markdown(f"💰 **예산**\n\n{bid.get('budget', '-')}")
         
-        # 방식(method) 전체 표시 - 길면 줄바꿈
-        method = bid.get('method', '-') or '-'
+        # 방식 전체 표시
+        method = bid.get("method", "-") or "-"
         c3.markdown(f"📋 **방식**\n\n{method}")
         
-        c4.markdown(f"⏰ **남은기간**\n\n{get_days_left(bid.get('deadline', ''))}")
+        c4.markdown(f"⏰ **D-Day**\n\n{get_days_left(bid.get('deadline', ''))}")
 
-        # 공고 보기 버튼
         if bid.get("url"):
             st.link_button("🔗 상세 공고 보기", bid["url"], use_container_width=True)
 
@@ -326,7 +309,6 @@ def main():
         layout="wide",
     )
 
-    # 사이드바
     with st.sidebar:
         st.title("🌐 BidScope")
         st.divider()
@@ -344,15 +326,61 @@ def main():
         )
 
         max_results = st.slider("소스별 최대 결과", 10, 50, 20)
-        
-        # 마감된 공고 포함 여부
         include_closed = st.checkbox("마감된 공고도 포함", value=False)
-        
         search_clicked = st.button("🔍 검색", type="primary", use_container_width=True)
 
         st.divider()
         render_links()
 
-    # 메인
     st.title("🌐 글로벌 입찰정보 통합 플랫폼")
-    st.caption("나라장터 · World Bank 입찰공고를 한 곳에서 검색하세요
+    st.caption("나라장터 · World Bank 입찰공고를 한 곳에서 검색하세요")
+
+    if search_clicked:
+        keywords = [k.strip() for k in keywords_input.split(",") if k.strip()]
+
+        if not keywords:
+            st.warning("검색 키워드를 입력해주세요.")
+            return
+
+        if not sources:
+            st.warning("데이터 소스를 선택해주세요.")
+            return
+
+        all_bids = []
+
+        with st.spinner("입찰정보 수집 중..."):
+            progress = st.progress(0)
+            total = len(sources) * len(keywords)
+            step = 0
+
+            for source in sources:
+                for keyword in keywords:
+                    step += 1
+                    progress.progress(step / total)
+
+                    if source == "나라장터":
+                        bids = fetch_nara_bids(keyword, max_results // len(keywords))
+                    elif source == "World Bank":
+                        bids = fetch_worldbank_bids(keyword, max_results // len(keywords), include_closed)
+                    else:
+                        bids = []
+
+                    all_bids.extend(bids)
+                    time.sleep(0.2)
+
+            progress.empty()
+
+        seen = set()
+        unique_bids = []
+        for bid in all_bids:
+            bid_id = f"{bid['source']}_{bid['id']}"
+            if bid_id not in seen:
+                seen.add(bid_id)
+                unique_bids.append(bid)
+
+        unique_bids.sort(key=lambda x: x.get("deadline", "") or "9999-99-99")
+
+        st.session_state["bids"] = unique_bids
+        st.session_state["search_time"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    bids = st.session_state
