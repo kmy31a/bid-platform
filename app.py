@@ -12,7 +12,7 @@ import time
 NARA_API_KEY = "887d7fccefd8a0adfe4f33a62b6532b6c355c131138a3d7303dc6d2f6c3d0bea"
 NARA_ENDPOINT = "https://apis.data.go.kr/1230000/BidPublicInfoService04/getBidPblancListInfoServcPPSSrch"
 
-DEFAULT_KEYWORDS = ["IT", "ICT", "의료", "교육", "보건", "교통", "기자재"]
+DEFAULT_KEYWORDS = ["IT", "ICT", "의료", "교육", "보건", "교통", "기자재", "digital", "medical", "health", "equipment", "education", "training", "tvet"]
 
 EXTERNAL_LINKS = {
     "KOICA": "https://www.koica.go.kr/koica_kr/901/subview.do",
@@ -145,53 +145,66 @@ def fetch_worldbank_bids(keyword, num_rows=30):
     url = "https://search.worldbank.org/api/v2/procnotices"
     params = {"format": "json", "qterm": keyword, "rows": num_rows}
 
-    try:
-        response = requests.get(url, params=params, timeout=15)
-        data = response.json()
-        proc_data = data.get("procnotices", {})
+    # 최대 2번 재시도
+    for attempt in range(2):
+        try:
+            response = requests.get(url, params=params, timeout=30)  # 30초로 증가
+            data = response.json()
+            proc_data = data.get("procnotices", {})
 
-        results = []
-        
-        # dict인 경우
-        if isinstance(proc_data, dict):
-            for key, doc in proc_data.items():
-                if isinstance(doc, dict) and key not in ["total", "rows"]:
-                    bid = {
-                        "source": "World Bank",
-                        "id": doc.get("id", key),
-                        "title": doc.get("notice_title", "") or doc.get("project_name", ""),
-                        "agency": doc.get("borrower", "") or doc.get("buyer", ""),
-                        "country": doc.get("countryname", ""),
-                        "deadline": parse_date(doc.get("submission_date", "") or doc.get("deadline_date", "")),
-                        "budget": "별도 확인",
-                        "url": doc.get("url", ""),
-                        "method": doc.get("notice_type", ""),
-                    }
-                    if bid["title"]:
-                        results.append(bid)
-        
-        # list인 경우
-        elif isinstance(proc_data, list):
-            for doc in proc_data:
-                if isinstance(doc, dict):
-                    bid = {
-                        "source": "World Bank",
-                        "id": doc.get("id", ""),
-                        "title": doc.get("notice_title", "") or doc.get("project_name", ""),
-                        "agency": doc.get("borrower", "") or doc.get("buyer", ""),
-                        "country": doc.get("countryname", ""),
-                        "deadline": parse_date(doc.get("submission_date", "") or doc.get("deadline_date", "")),
-                        "budget": "별도 확인",
-                        "url": doc.get("url", ""),
-                        "method": doc.get("notice_type", ""),
-                    }
-                    if bid["title"]:
-                        results.append(bid)
+            results = []
+            
+            # dict인 경우
+            if isinstance(proc_data, dict):
+                for key, doc in proc_data.items():
+                    if isinstance(doc, dict) and key not in ["total", "rows"]:
+                        bid = {
+                            "source": "World Bank",
+                            "id": doc.get("id", key),
+                            "title": doc.get("notice_title", "") or doc.get("project_name", ""),
+                            "agency": doc.get("borrower", "") or doc.get("buyer", ""),
+                            "country": doc.get("countryname", ""),
+                            "deadline": parse_date(doc.get("submission_date", "") or doc.get("deadline_date", "")),
+                            "budget": "별도 확인",
+                            "url": doc.get("url", ""),
+                            "method": doc.get("notice_type", ""),
+                        }
+                        if bid["title"]:
+                            results.append(bid)
+            
+            # list인 경우
+            elif isinstance(proc_data, list):
+                for doc in proc_data:
+                    if isinstance(doc, dict):
+                        bid = {
+                            "source": "World Bank",
+                            "id": doc.get("id", ""),
+                            "title": doc.get("notice_title", "") or doc.get("project_name", ""),
+                            "agency": doc.get("borrower", "") or doc.get("buyer", ""),
+                            "country": doc.get("countryname", ""),
+                            "deadline": parse_date(doc.get("submission_date", "") or doc.get("deadline_date", "")),
+                            "budget": "별도 확인",
+                            "url": doc.get("url", ""),
+                            "method": doc.get("notice_type", ""),
+                        }
+                        if bid["title"]:
+                            results.append(bid)
 
-        return results
-    except Exception as e:
-        st.error(f"World Bank 오류: {e}")
-        return []
+            return results
+            
+        except requests.exceptions.Timeout:
+            if attempt == 0:
+                time.sleep(1)  # 1초 대기 후 재시도
+                continue
+            else:
+                st.warning("World Bank 서버 응답이 느립니다. 나중에 다시 시도해주세요.")
+                return []
+        except Exception as e:
+            st.error(f"World Bank 오류: {e}")
+            return []
+    
+    return []
+
 
 
 
