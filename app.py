@@ -151,26 +151,48 @@ def fetch_worldbank_bids(keyword, num_rows=30):
         proc_data = data.get("procnotices", {})
 
         results = []
-        for key, doc in proc_data.items():
-            if isinstance(doc, dict) and key not in ["total", "rows"]:
-                bid = {
-                    "source": "World Bank",
-                    "id": doc.get("id", key),
-                    "title": doc.get("notice_title", "") or doc.get("project_name", ""),
-                    "agency": doc.get("borrower", "") or doc.get("buyer", ""),
-                    "country": doc.get("countryname", ""),
-                    "deadline": parse_date(doc.get("submission_date", "") or doc.get("deadline_date", "")),
-                    "budget": "별도 확인",
-                    "url": doc.get("url", ""),
-                    "method": doc.get("notice_type", ""),
-                }
-                if bid["title"]:
-                    results.append(bid)
+        
+        # dict인 경우
+        if isinstance(proc_data, dict):
+            for key, doc in proc_data.items():
+                if isinstance(doc, dict) and key not in ["total", "rows"]:
+                    bid = {
+                        "source": "World Bank",
+                        "id": doc.get("id", key),
+                        "title": doc.get("notice_title", "") or doc.get("project_name", ""),
+                        "agency": doc.get("borrower", "") or doc.get("buyer", ""),
+                        "country": doc.get("countryname", ""),
+                        "deadline": parse_date(doc.get("submission_date", "") or doc.get("deadline_date", "")),
+                        "budget": "별도 확인",
+                        "url": doc.get("url", ""),
+                        "method": doc.get("notice_type", ""),
+                    }
+                    if bid["title"]:
+                        results.append(bid)
+        
+        # list인 경우
+        elif isinstance(proc_data, list):
+            for doc in proc_data:
+                if isinstance(doc, dict):
+                    bid = {
+                        "source": "World Bank",
+                        "id": doc.get("id", ""),
+                        "title": doc.get("notice_title", "") or doc.get("project_name", ""),
+                        "agency": doc.get("borrower", "") or doc.get("buyer", ""),
+                        "country": doc.get("countryname", ""),
+                        "deadline": parse_date(doc.get("submission_date", "") or doc.get("deadline_date", "")),
+                        "budget": "별도 확인",
+                        "url": doc.get("url", ""),
+                        "method": doc.get("notice_type", ""),
+                    }
+                    if bid["title"]:
+                        results.append(bid)
 
         return results
     except Exception as e:
         st.error(f"World Bank 오류: {e}")
         return []
+
 
 
 # ============================================================
