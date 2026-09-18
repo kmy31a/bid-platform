@@ -4,14 +4,8 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, date, timedelta
 import time
 
-# ============================================================
-# 페이지 설정 (최상단 필수)
-# ============================================================
 st.set_page_config(page_title="글로벌 입찰정보", page_icon="🌐", layout="wide")
 
-# ============================================================
-# 설정
-# ============================================================
 NARA_API_KEY = "887d7fccefd8a0adfe4f33a62b6532b6c355c131138a3d7303dc6d2f6c3d0bea"
 NARA_ENDPOINT = "https://apis.data.go.kr/1230000/BidPublicInfoService04/getBidPblancListInfoServcPPSSrch"
 DEFAULT_KEYWORDS = ["IT", "ICT", "의료", "교육", "건설"]
@@ -23,20 +17,20 @@ EXTERNAL_LINKS = {
     "AfDB": "https://www.afdb.org/en/projects-and-operations/procurement",
 }
 
-# ============================================================
-# 세션 상태 초기화
-# ============================================================
 if "bids" not in st.session_state:
     st.session_state.bids = []
 if "search_time" not in st.session_state:
     st.session_state.search_time = ""
+if "do_search" not in st.session_state:
+    st.session_state.do_search = False
 
-# ============================================================
-# 유틸리티 함수
-# ============================================================
+
 def get_xml_text(element, tag):
     found = element.find(tag)
-    return found.text.strip() if found is not None and found.text else ""
+    if found is not None and found.text:
+        return found.text.strip()
+    return ""
+
 
 def parse_date(date_str):
     if not date_str:
@@ -48,9 +42,12 @@ def parse_date(date_str):
             return date_str[:10]
         if len(date_str) >= 8:
             return datetime.strptime(date_str[:8], "%Y%m%d").strftime("%Y-%m-%d")
-    except:
+    except Exception:
         pass
-    return date_str[:10] if len(date_str) >= 10 else date_str
+    if len(date_str) >= 10:
+        return date_str[:10]
+    return date_str
+
 
 def format_budget(amount_str):
     if not amount_str:
@@ -61,11 +58,12 @@ def format_budget(amount_str):
             return "미정"
         if amount >= 100000000:
             return f"{amount / 100000000:.1f}억원"
-        elif amount >= 10000:
+        if amount >= 10000:
             return f"{amount / 10000:.0f}만원"
         return f"{amount:,}원"
-    except:
+    except Exception:
         return amount_str
+
 
 def get_status(deadline):
     if not deadline:
@@ -75,11 +73,12 @@ def get_status(deadline):
         days_left = (deadline_date - date.today()).days
         if days_left < 0:
             return "마감"
-        elif days_left <= 7:
+        if days_left <= 7:
             return "마감임박"
         return "진행중"
-    except:
+    except Exception:
         return "진행중"
+
 
 def get_days_left(deadline):
     if not deadline:
@@ -89,15 +88,13 @@ def get_days_left(deadline):
         days_left = (deadline_date - date.today()).days
         if days_left < 0:
             return "마감"
-        elif days_left == 0:
+        if days_left == 0:
             return "오늘 마감"
         return f"D-{days_left}"
-    except:
+    except Exception:
         return "-"
 
-# ============================================================
-# API 함수
-# ============================================================
+
 def fetch_nara_bids(keyword, num_rows=30):
     end_date = datetime.now()
     start_date = end_date - timedelta(days=30)
@@ -136,40 +133,35 @@ def fetch_nara_bids(keyword, num_rows=30):
             if bid["title"]:
                 results.append(bid)
         return results
-    except Exception as e:
+    except Exception:
         return []
+
 
 def fetch_worldbank_bids(keyword, num_rows=30, include_closed=False):
     url = "https://search.worldbank.org/api/v2/procnotices"
-    params = {
-        "format": "json",
-        "qterm": keyword,
-        "rows": num_rows * 3,
-        "os": 0,
-    }
+    params = {"format": "json", "qterm": keyword, "rows": num_rows * 3, "os": 0}
     try:
         response = requests.get(url, params=params, timeout=30)
         data = response.json()
         proc_data = data.get("procnotices", {})
         results = []
-        
-        def process_doc(doc, key=""):
+        for key, doc in proc_data.items() if isinstance(proc_data, dict) else []:
+            if key in ["total", "rows"]:
+                continue
             if not isinstance(doc, dict):
-                return None
+                continue
             deadline_raw = doc.get("submission_date", "") or doc.get("deadline_date", "")
             deadline = parse_date(deadline_raw)
             if not include_closed and deadline:
                 try:
-                    deadline_date = datetime.strptime(deadline, "%Y-%m-%d").date()
-                    if deadline_date < date.today():
-                        return None
-                except:
+                    if datetime.strptime(deadline, "%Y-%m-%d").date() < date.today():
+                        continue
+                except Exception:
                     pass
             notice_id = doc.get("id", key)
             detail_url = doc.get("url", "")
             if not detail_url and notice_id:
                 detail_url = f"https://projects.worldbank.org/en/projects-operations/procurement-detail/{notice_id}"
-            notice_type = doc.get("notice_type", "") or doc.get("procurement_method", "") or "-"
             bid = {
                 "source": "World Bank",
                 "id": notice_id,
@@ -179,43 +171,32 @@ def fetch_worldbank_bids(keyword, num_rows=30, include_closed=False):
                 "deadline": deadline,
                 "budget": "별도 확인",
                 "url": detail_url,
-                "method": notice_type,
+                "method": doc.get("notice_type", "") or doc.get("procurement_method", "") or "-",
             }
-            return bid if bid["title"] else None
-        
-        if isinstance(proc_data, dict):
-            for key, doc in proc_data.items():
-                if key not in ["total", "rows"]:
-                    bid = process_doc(doc, key)
-                    if bid:
-                        results.append(bid)
-        elif isinstance(proc_data, list):
-            for doc in proc_data:
-                bid = process_doc(doc)
-                if bid:
-                    results.append(bid)
+            if bid["title"]:
+                results.append(bid)
         return results[:num_rows]
-    except:
+    except Exception:
         return []
 
-# ============================================================
-# UI 컴포넌트
-# ============================================================
+
+def trigger_search():
+    st.session_state.do_search = True
+
+
 def render_bid_card(bid):
     status = get_status(bid.get("deadline", ""))
-    colors = {"진행중": "green", "마감임박": "orange", "마감": "gray"}
-    color = colors.get(status, "gray")
-    
+    color = {"진행중": "green", "마감임박": "orange", "마감": "gray"}.get(status, "gray")
     with st.container(border=True):
         col1, col2 = st.columns([4, 1])
         with col1:
             emoji = "🇰🇷" if bid["source"] == "나라장터" else "🌍"
             title = bid.get("title", "제목 없음")
-            short_title = title[:55] + "..." if len(title) > 55 else title
+            short = title[:55] + "..." if len(title) > 55 else title
             if bid.get("url"):
-                st.markdown(f"**{emoji} [{short_title}]({bid['url']})**")
+                st.markdown(f"**{emoji} [{short}]({bid['url']})**")
             else:
-                st.markdown(f"**{emoji} {short_title}**")
+                st.markdown(f"**{emoji} {short}**")
             agency = bid.get("agency", "-") or "-"
             country = bid.get("country", "")
             loc = f"{country} · " if country else ""
@@ -228,9 +209,10 @@ def render_bid_card(bid):
         c3.markdown(f"📋 **방식**\n\n{bid.get('method', '-') or '-'}")
         c4.markdown(f"⏰ **D-Day**\n\n{get_days_left(bid.get('deadline', ''))}")
         if bid.get("url"):
-            st.link_button("🔗 상세 공고 보기", bid["url"], use_container_width=True)
+            st.link_button("🔗 상세보기", bid["url"], use_container_width=True)
 
-def render_statistics(bids):
+
+def render_stats(bids):
     total = len(bids)
     nara = len([b for b in bids if b["source"] == "나라장터"])
     wb = len([b for b in bids if b["source"] == "World Bank"])
@@ -241,99 +223,69 @@ def render_statistics(bids):
     c3.metric("World Bank", f"{wb}건")
     c4.metric("마감임박", f"{urgent}건")
 
-# ============================================================
-# 사이드바
-# ============================================================
+
 with st.sidebar:
     st.title("🌐 BidScope")
     st.divider()
-    
-    sources = st.multiselect(
-        "데이터 소스",
-        ["나라장터", "World Bank"],
-        default=["나라장터", "World Bank"],
-    )
-    
-    keywords_input = st.text_area(
-        "검색 키워드 (쉼표 구분)",
-        value=", ".join(DEFAULT_KEYWORDS),
-        height=80,
-    )
-    
+    sources = st.multiselect("데이터 소스", ["나라장터", "World Bank"], default=["나라장터", "World Bank"])
+    keywords_input = st.text_area("검색 키워드 (쉼표 구분)", value=", ".join(DEFAULT_KEYWORDS), height=80)
     max_results = st.slider("소스별 최대 결과", 10, 50, 20)
     include_closed = st.checkbox("마감된 공고도 포함", value=False)
-    search_clicked = st.button("🔍 검색", type="primary", use_container_width=True)
-    
+    st.button("🔍 검색", type="primary", use_container_width=True, on_click=trigger_search)
     st.divider()
     st.subheader("🔗 기관 바로가기")
-    cols = st.columns(2)
-    for idx, (name, url) in enumerate(EXTERNAL_LINKS.items()):
-        cols[idx % 2].link_button(name, url, use_container_width=True)
+    lcol = st.columns(2)
+    for i, (name, url) in enumerate(EXTERNAL_LINKS.items()):
+        lcol[i % 2].link_button(name, url, use_container_width=True)
 
-# ============================================================
-# 메인 영역
-# ============================================================
 st.title("🌐 글로벌 입찰정보 통합 플랫폼")
 st.caption("나라장터 · World Bank 입찰공고를 한 곳에서 검색하세요")
 
-# 검색 실행
-if search_clicked:
+if st.session_state.do_search:
     keywords = [k.strip() for k in keywords_input.split(",") if k.strip()]
-    
     if not keywords:
         st.warning("검색 키워드를 입력해주세요.")
     elif not sources:
         st.warning("데이터 소스를 선택해주세요.")
     else:
         all_bids = []
-        with st.spinner("입찰정보 수집 중..."):
-            progress = st.progress(0)
-            total_steps = len(sources) * len(keywords)
-            step = 0
-            
-            for source in sources:
-                for keyword in keywords:
-                    step += 1
-                    progress.progress(step / total_steps)
-                    if source == "나라장터":
-                        bids = fetch_nara_bids(keyword, max_results // len(keywords) + 1)
-                    elif source == "World Bank":
-                        bids = fetch_worldbank_bids(keyword, max_results // len(keywords) + 1, include_closed)
-                    else:
-                        bids = []
-                    all_bids.extend(bids)
-                    time.sleep(0.1)
-            progress.empty()
-        
-        # 중복 제거 및 정렬
+        prog = st.progress(0)
+        txt = st.empty()
+        total = len(sources) * len(keywords)
+        step = 0
+        for src in sources:
+            for kw in keywords:
+                step += 1
+                prog.progress(step / total)
+                txt.text(f"검색 중: {src} - {kw}")
+                if src == "나라장터":
+                    res = fetch_nara_bids(kw, max_results // len(keywords) + 1)
+                else:
+                    res = fetch_worldbank_bids(kw, max_results // len(keywords) + 1, include_closed)
+                all_bids.extend(res)
+                time.sleep(0.1)
+        prog.empty()
+        txt.empty()
         seen = set()
-        unique_bids = []
-        for bid in all_bids:
-            bid_key = f"{bid['source']}_{bid['id']}"
-            if bid_key not in seen:
-                seen.add(bid_key)
-                unique_bids.append(bid)
-        unique_bids.sort(key=lambda x: x.get("deadline", "") or "9999-99-99")
-        
-        st.session_state.bids = unique_bids
+        unique = []
+        for b in all_bids:
+            key = f"{b['source']}_{b['id']}"
+            if key not in seen:
+                seen.add(key)
+                unique.append(b)
+        unique.sort(key=lambda x: x.get("deadline", "") or "9999-99-99")
+        st.session_state.bids = unique
         st.session_state.search_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+    st.session_state.do_search = False
 
-# 결과 표시
 if st.session_state.bids:
-    bids = st.session_state.bids
-    
     st.success(f"🕐 {st.session_state.search_time} 검색 완료")
-    render_statistics(bids)
+    render_stats(st.session_state.bids)
     st.divider()
-    
-    filter_source = st.selectbox("소스 필터", ["전체", "나라장터", "World Bank"])
-    if filter_source != "전체":
-        bids = [b for b in bids if b["source"] == filter_source]
-
-    st.subheader(f"📋 검색 결과 ({len(bids)}건)")
-    
-    for bid in bids:
+    flt = st.selectbox("소스 필터", ["전체", "나라장터", "World Bank"])
+    display = st.session_state.bids if flt == "전체" else [b for b in st.session_state.bids if b["source"] == flt]
+    st.subheader(f"📋 검색 결과 ({len(display)}건)")
+    for bid in display:
         render_bid_card(bid)
-
 else:
     st.info("👈 사이드바에서 키워드를 입력하고 검색 버튼을 클릭하세요.")
