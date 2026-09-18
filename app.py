@@ -16,6 +16,14 @@ EXTERNAL_LINKS = {
     "ADB": "https://www.adb.org/projects/tenders",
     "AfDB": "https://www.afdb.org/en/projects-and-operations/procurement",
 }
+if "sources" not in st.session_state:
+    st.session_state.sources = ["나라장터", "World Bank"]
+if "keywords_input" not in st.session_state:
+    st.session_state.keywords_input = ", ".join(DEFAULT_KEYWORDS)
+if "max_results" not in st.session_state:
+    st.session_state.max_results = 20
+if "include_closed" not in st.session_state:
+    st.session_state.include_closed = False
 
 if "bids" not in st.session_state:
     st.session_state.bids = []
@@ -227,10 +235,10 @@ def render_stats(bids):
 with st.sidebar:
     st.title("🌐 BidScope")
     st.divider()
-    sources = st.multiselect("데이터 소스", ["나라장터", "World Bank"], default=["나라장터", "World Bank"])
-    keywords_input = st.text_area("검색 키워드 (쉼표 구분)", value=", ".join(DEFAULT_KEYWORDS), height=80)
-    max_results = st.slider("소스별 최대 결과", 10, 50, 20)
-    include_closed = st.checkbox("마감된 공고도 포함", value=False)
+    sources = st.multiselect("데이터 소스", ["나라장터", "World Bank"], key="sources")
+    keywords_input = st.text_area("검색 키워드 (쉼표 구분)", height=80, key="keywords_input")
+    max_results = st.slider("소스별 최대 결과", 10, 50, key="max_results")
+    include_closed = st.checkbox("마감된 공고도 포함", key="include_closed")
     st.button("🔍 검색", type="primary", use_container_width=True, on_click=trigger_search)
     st.divider()
     st.subheader("🔗 기관 바로가기")
