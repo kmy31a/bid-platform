@@ -142,7 +142,7 @@ def fetch_nara_bids(keyword, num_rows=30):
 
 def fetch_worldbank_bids(keyword, num_rows=30):
     """World Bank 입찰공고 검색"""
-    url = "https://search.worldbank.org/api/v2/procnotices"
+    url = "https://projects.worldbank.org/en/projects-operations/opportunities"
     params = {"format": "json", "qterm": keyword, "rows": num_rows}
 
     try:
