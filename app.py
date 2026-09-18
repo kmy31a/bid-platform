@@ -98,7 +98,6 @@ def get_days_left(deadline):
 # ============================================================
 
 def fetch_nara_bids(keyword, num_rows=30):
-    """나라장터 입찰공고 검색"""
     end_date = datetime.now()
     start_date = end_date - timedelta(days=30)
 
@@ -149,7 +148,6 @@ def fetch_nara_bids(keyword, num_rows=30):
 
 
 def fetch_worldbank_bids(keyword, num_rows=30, include_closed=False):
-    """World Bank 입찰공고 검색"""
     url = "https://search.worldbank.org/api/v2/procnotices"
     
     params = {
@@ -174,7 +172,6 @@ def fetch_worldbank_bids(keyword, num_rows=30, include_closed=False):
                 deadline_raw = doc.get("submission_date", "") or doc.get("deadline_date", "")
                 deadline = parse_date(deadline_raw)
                 
-                # 마감된 공고 필터링
                 if not include_closed and deadline:
                     try:
                         deadline_date = datetime.strptime(deadline, "%Y-%m-%d").date()
@@ -223,7 +220,7 @@ def fetch_worldbank_bids(keyword, num_rows=30, include_closed=False):
                 time.sleep(1)
                 continue
             else:
-                st.warning("World Bank 서버 응답이 느립니다. 나중에 다시 시도해주세요.")
+                st.warning("World Bank 서버 응답이 느립니다.")
                 return []
         except Exception as e:
             st.error(f"World Bank 오류: {e}")
@@ -237,7 +234,6 @@ def fetch_worldbank_bids(keyword, num_rows=30, include_closed=False):
 # ============================================================
 
 def render_bid_card(bid):
-    """입찰공고 카드"""
     status = get_status(bid.get("deadline", ""))
     color = STATUS_COLORS.get(status, "gray")
     
@@ -265,11 +261,7 @@ def render_bid_card(bid):
         c1, c2, c3, c4 = st.columns(4)
         c1.markdown(f"📅 **마감일**\n\n{bid.get('deadline', '-') or '-'}")
         c2.markdown(f"💰 **예산**\n\n{bid.get('budget', '-')}")
-        
-        # 방식 전체 표시
-        method = bid.get("method", "-") or "-"
-        c3.markdown(f"📋 **방식**\n\n{method}")
-        
+        c3.markdown(f"📋 **방식**\n\n{bid.get('method', '-') or '-'}")
         c4.markdown(f"⏰ **D-Day**\n\n{get_days_left(bid.get('deadline', ''))}")
 
         if bid.get("url"):
@@ -277,7 +269,6 @@ def render_bid_card(bid):
 
 
 def render_statistics(bids):
-    """통계 표시"""
     total = len(bids)
     nara = len([b for b in bids if b["source"] == "나라장터"])
     wb = len([b for b in bids if b["source"] == "World Bank"])
@@ -291,7 +282,6 @@ def render_statistics(bids):
 
 
 def render_links():
-    """바로가기 링크"""
     st.subheader("🔗 기관 바로가기")
     cols = st.columns(len(EXTERNAL_LINKS))
     for idx, (name, url) in enumerate(EXTERNAL_LINKS.items()):
@@ -303,11 +293,7 @@ def render_links():
 # ============================================================
 
 def main():
-    st.set_page_config(
-        page_title="글로벌 입찰정보",
-        page_icon="🌐",
-        layout="wide",
-    )
+    st.set_page_config(page_title="글로벌 입찰정보", page_icon="🌐", layout="wide")
 
     with st.sidebar:
         st.title("🌐 BidScope")
@@ -350,13 +336,13 @@ def main():
 
         with st.spinner("입찰정보 수집 중..."):
             progress = st.progress(0)
-            total = len(sources) * len(keywords)
+            total_steps = len(sources) * len(keywords)
             step = 0
 
             for source in sources:
                 for keyword in keywords:
                     step += 1
-                    progress.progress(step / total)
+                    progress.progress(step / total_steps)
 
                     if source == "나라장터":
                         bids = fetch_nara_bids(keyword, max_results // len(keywords))
@@ -373,9 +359,9 @@ def main():
         seen = set()
         unique_bids = []
         for bid in all_bids:
-            bid_id = f"{bid['source']}_{bid['id']}"
-            if bid_id not in seen:
-                seen.add(bid_id)
+            bid_key = f"{bid['source']}_{bid['id']}"
+            if bid_key not in seen:
+                seen.add(bid_key)
                 unique_bids.append(bid)
 
         unique_bids.sort(key=lambda x: x.get("deadline", "") or "9999-99-99")
@@ -383,4 +369,12 @@ def main():
         st.session_state["bids"] = unique_bids
         st.session_state["search_time"] = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    bids = st.session_state
+    if "bids" in st.session_state and st.session_state["bids"]:
+        bids = st.session_state["bids"]
+        
+        st.success(f"🕐 {st.session_state.get('search_time', '')} 검색 완료")
+        render_statistics(bids)
+        
+        st.divider()
+        
+        filter_source = st.selectbox("소스 필터", ["전체", "나라장터", "World Bank"])
