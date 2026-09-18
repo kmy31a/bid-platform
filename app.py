@@ -378,3 +378,19 @@ def main():
         st.divider()
         
         filter_source = st.selectbox("소스 필터", ["전체", "나라장터", "World Bank"])
+                if filter_source != "전체":
+            bids = [b for b in bids if b["source"] == filter_source]
+
+        st.subheader(f"📋 검색 결과 ({len(bids)}건)")
+        
+        for bid in bids:
+            render_bid_card(bid)
+
+    else:
+        st.info("👈 사이드바에서 키워드를 입력하고 검색 버튼을 클릭하세요.")
+
+
+if __name__ == "__main__":
+    main()
+
+
